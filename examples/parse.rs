@@ -3,12 +3,39 @@ extern crate json;
 fn main() -> Result<(), json::Error> {
     let source = r#"
     //asd asd 
+    // asdas
+    /* asdasd
+    11
+    2
+    ***
+    */
 {
         "features": [
-            1, 2, 
+            1, 
+            //asd 
+        // asd
+        /* asd
+        1
+
+        1
+        ***********
+
+        */
+            2, 
         ],
+        //asd 
+        // asd
+        /* asd
+        1
+
+        1
+        ***********
+
+        */
         "a": [
-            3, 2, 1, "a", 2, 
+            3, 2, //asd
+            // asdas
+            1, "a", 2, //asdasd
         ],
 }
 //asd

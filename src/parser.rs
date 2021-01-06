@@ -198,9 +198,9 @@ macro_rules! expect_comment {
                     if $parser.is_eof() {
                         break;
                     }
-                    
+
                     let ch = expect_byte!($parser);
-                    
+
                     // NOTE: 处理 \r\n ?
                     if ch == b'\r' || ch == b'\n' {
                         if !$parser.is_eof() {
@@ -788,11 +788,15 @@ impl<'a> Parser<'a> {
                         match ch {
                             b',' => {
                                 ch = expect_byte_ignore_whitespace!(self);
-                                if ch == b'/' {
-                                    expect_comment!(self);
-                                    ch = expect_byte_ignore_whitespace!(self);
+                                loop {
+                                    if ch == b'/' {
+                                        expect_comment!(self);
+                                        ch = expect_byte_ignore_whitespace!(self);
+                                    } else {
+                                        break;
+                                    }
                                 }
-
+                                
                                 if ch == b']' {
                                     
                                 } else {
@@ -813,9 +817,13 @@ impl<'a> Parser<'a> {
                         match ch {
                             b',' => {
                                 ch = expect_byte_ignore_whitespace!(self);
-                                if ch == b'/' {
-                                    expect_comment!(self);
-                                    ch = expect_byte_ignore_whitespace!(self);
+                                loop {
+                                    if ch == b'/' {
+                                        expect_comment!(self);
+                                        ch = expect_byte_ignore_whitespace!(self);
+                                    } else {
+                                        break;
+                                    }
                                 }
 
                                 if ch == b'"' {
