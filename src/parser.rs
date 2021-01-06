@@ -123,6 +123,10 @@ macro_rules! expect_eof {
         while !$parser.is_eof() {
             match $parser.read_byte() {
                 9 ..= 13 | 32 => $parser.bump(),
+                b'/' => {
+                    $parser.bump();
+                    expect_comment!($parser);
+                },
                 _             => {
                     $parser.bump();
                     return $parser.unexpected_character();
@@ -184,6 +188,58 @@ static ALLOWED: [bool; 256] = [
   __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
 ];
 
+macro_rules! expect_comment {
+    ($parser:ident) => ({
+        let ch = expect_byte!($parser);
+        match ch {
+            b'/' => {
+                // // 
+                loop {
+                    if $parser.is_eof() {
+                        break;
+                    }
+                    
+                    let ch = expect_byte!($parser);
+                    
+                    // NOTE: 处理 \r\n ?
+                    if ch == b'\r' || ch == b'\n' {
+                        if !$parser.is_eof() {
+                            // $parser.bump();
+                            break;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            },
+            b'*' => {
+                // /*
+                let mut ch = expect_byte!($parser);
+                loop {
+                    match ch {
+                        b'*' => {
+                            ch = expect_byte!($parser);
+                            if ch == b'/' {
+                                if !$parser.is_eof() {
+                                    // $parser.bump();
+                                    break;
+                                } else {
+                                    break;
+                                }
+                            }
+                        },
+                        _ => {
+                            ch = expect_byte!($parser);
+                        }
+                    }
+                }
+            },
+            _ => {
+                return $parser.unexpected_character();
+            }
+        }
+    })
+}
 
 // Expect a string. This is called after encountering, and consuming, a
 // double quote character. This macro has a happy path variant where it
@@ -195,7 +251,8 @@ macro_rules! expect_string {
     ($parser:ident) => ({
         let result: &str;
         let start = $parser.index;
-
+        // let start_ch = $parser.read_byte();
+        // println!("s ch: {:?}", start_ch);
         loop {
             let ch = expect_byte!($parser);
             if ALLOWED[ch as usize] {
@@ -695,17 +752,34 @@ impl<'a> Parser<'a> {
                     expect_sequence!(self, b'u', b'l', b'l');
                     JsonValue::Null
                 },
-                _    => return self.unexpected_character()
+                b']' => {
+                    ch = expect_byte_ignore_whitespace!(self);
+                    // JsonValue::Null
+                    continue 'parsing;
+                },
+                b'}' => {
+                    ch = expect_byte_ignore_whitespace!(self);
+                    // JsonValue::Null
+                    continue 'parsing;
+                    
+                },
+                b'/' => {
+                    expect_comment!(self);
+                    ch = expect_byte_ignore_whitespace!(self);
+                    // JsonValue::Null
+                    continue 'parsing;
+                },
+                _    => {
+                    return self.unexpected_character()
+                }
             };
 
             'popping: loop {
                 match stack.last_mut() {
                     None => {
                         expect_eof!(self);
-
                         return Ok(value);
                     },
-
                     Some(&mut StackBlock(JsonValue::Array(ref mut array), _)) => {
                         array.push(value);
 
@@ -714,14 +788,23 @@ impl<'a> Parser<'a> {
                         match ch {
                             b',' => {
                                 ch = expect_byte_ignore_whitespace!(self);
+                                if ch == b'/' {
+                                    expect_comment!(self);
+                                    ch = expect_byte_ignore_whitespace!(self);
+                                }
 
-                                continue 'parsing;
+                                if ch == b']' {
+                                    
+                                } else {
+                                    continue 'parsing;
+                                }
                             },
                             b']' => {},
-                            _    => return self.unexpected_character()
+                            _    => {
+                                return self.unexpected_character()
+                            }
                         }
                     },
-
                     Some(&mut StackBlock(JsonValue::Object(ref mut object), ref mut index )) => {
                         object.override_at(*index, value);
 
@@ -729,19 +812,30 @@ impl<'a> Parser<'a> {
 
                         match ch {
                             b',' => {
-                                expect!(self, b'"');
-                                *index = object.insert_index(expect_string!(self), JsonValue::Null);
-                                expect!(self, b':');
-
                                 ch = expect_byte_ignore_whitespace!(self);
+                                if ch == b'/' {
+                                    expect_comment!(self);
+                                    ch = expect_byte_ignore_whitespace!(self);
+                                }
 
-                                continue 'parsing;
+                                if ch == b'"' {
+                                    // expect!(self, b'"');
+                                    *index = object.insert_index(expect_string!(self), JsonValue::Null);
+                                    expect!(self, b':');
+
+                                    ch = expect_byte_ignore_whitespace!(self);
+
+                                    continue 'parsing;
+                                } else if ch == b'}' {
+
+                                } else {
+                                    return self.unexpected_character()
+                                }
                             },
                             b'}' => {},
                             _    => return self.unexpected_character()
                         }
                     },
-
                     _ => unreachable!(),
                 }
 
@@ -754,6 +848,7 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[derive(Debug)]
 struct StackBlock(JsonValue, usize);
 
 // All that hard work, and in the end it's just a single function in the API.
